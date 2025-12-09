@@ -8,13 +8,13 @@
 2. 将仓库同步到 Termux：`git clone` 或直接复制本目录。
 3. 在仓库根目录执行脚本（可指定任务，默认 `assembleDebug`）：
    ```bash
-   ./Termux打包脚本.sh            # 默认打 Debug 包
-   ./Termux打包脚本.sh bundleRelease  # 生成 AAB
+   bash Termux打包脚本.sh             # 默认打 Debug 包
+   bash Termux打包脚本.sh bundleRelease  # 生成 AAB
    ```
-   如需一键使用预设任务，可直接运行根目录的 `运行打包.sh`，它会调用 Termux 脚本并处理权限：
+   如需一键使用预设任务，可直接运行根目录的 `run打包.sh`，它会用 bash 调用 Termux 脚本：
    ```bash
-   ./运行打包.sh            # 等同 assembleDebug
-   ./运行打包.sh assembleRelease  # 生成正式签名前的 Release 包
+   bash run打包.sh             # 等同 assembleDebug
+   bash run打包.sh assembleRelease  # 生成正式签名前的 Release 包
    ```
 4. 构建成功后，APK/AAB 产物位于 `app/build/outputs/` 对应子目录。
 
