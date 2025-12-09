@@ -28,7 +28,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,10 +66,40 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+data class CanvasComponent(
+    val id: Int,
+    val name: String,
+    val visible: Boolean = true,
+    val locked: Boolean = false
+)
+
 @Composable
 fun StudioHomeScreen() {
     var selectedComponent by remember { mutableStateOf("按钮") }
     var zoom by remember { mutableFloatStateOf(1.0f) }
+    var nextId by remember { mutableStateOf(1) }
+    val canvasComponents = remember { mutableStateListOf<CanvasComponent>() }
+
+    fun addComponentToCanvas(name: String) {
+        canvasComponents.add(CanvasComponent(id = nextId, name = name))
+        nextId += 1
+    }
+
+    fun toggleVisibility(id: Int) {
+        val index = canvasComponents.indexOfFirst { it.id == id }
+        if (index >= 0) {
+            val current = canvasComponents[index]
+            canvasComponents[index] = current.copy(visible = !current.visible)
+        }
+    }
+
+    fun toggleLock(id: Int) {
+        val index = canvasComponents.indexOfFirst { it.id == id }
+        if (index >= 0) {
+            val current = canvasComponents[index]
+            canvasComponents[index] = current.copy(locked = !current.locked)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -116,20 +146,27 @@ fun StudioHomeScreen() {
                         .width(220.dp)
                         .fillMaxHeight(),
                     selectedComponent = selectedComponent,
-                    onComponentSelected = { selectedComponent = it }
+                    onComponentSelected = { selectedComponent = it },
+                    onAddToCanvas = { addComponentToCanvas(it) }
                 )
                 CanvasPreview(
                     modifier = Modifier.weight(1f),
                     selectedComponent = selectedComponent,
                     zoom = zoom,
-                    onZoomChange = { zoom = it }
+                    onZoomChange = { zoom = it },
+                    components = canvasComponents,
+                    onSelectComponent = { selectedComponent = it }
                 )
                 PropertyPanel(
                     modifier = Modifier
                         .width(260.dp)
                         .fillMaxHeight(),
                     selectedComponent = selectedComponent,
-                    zoom = zoom
+                    zoom = zoom,
+                    components = canvasComponents,
+                    onSelectComponent = { selectedComponent = it },
+                    onToggleVisible = { toggleVisibility(it) },
+                    onToggleLock = { toggleLock(it) }
                 )
             }
             BottomToolBar()
@@ -141,7 +178,8 @@ fun StudioHomeScreen() {
 fun ComponentLibraryPanel(
     modifier: Modifier = Modifier,
     selectedComponent: String,
-    onComponentSelected: (String) -> Unit
+    onComponentSelected: (String) -> Unit,
+    onAddToCanvas: (String) -> Unit
 ) {
     Surface(
         modifier = modifier,
@@ -188,6 +226,12 @@ fun ComponentLibraryPanel(
                                 )
                             }
                         }
+                        OutlinedButton(
+                            onClick = { onAddToCanvas(selectedComponent) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("添加到画布")
+                        }
                     }
                 }
             }
@@ -200,7 +244,9 @@ fun CanvasPreview(
     modifier: Modifier = Modifier,
     selectedComponent: String,
     zoom: Float,
-    onZoomChange: (Float) -> Unit
+    onZoomChange: (Float) -> Unit,
+    components: List<CanvasComponent>,
+    onSelectComponent: (String) -> Unit
 ) {
     Column(
         modifier = modifier
@@ -217,7 +263,12 @@ fun CanvasPreview(
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center
         ) {
-            PhoneFramePreview(selectedComponent = selectedComponent, zoom = zoom)
+            PhoneFramePreview(
+                selectedComponent = selectedComponent,
+                zoom = zoom,
+                components = components,
+                onSelectComponent = onSelectComponent
+            )
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -255,7 +306,12 @@ fun CanvasPreview(
 }
 
 @Composable
-fun PhoneFramePreview(selectedComponent: String, zoom: Float) {
+fun PhoneFramePreview(
+    selectedComponent: String,
+    zoom: Float,
+    components: List<CanvasComponent>,
+    onSelectComponent: (String) -> Unit
+) {
     Card(
         shape = RoundedCornerShape(32.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.75f)),
@@ -299,7 +355,12 @@ fun PhoneFramePreview(selectedComponent: String, zoom: Float) {
                             .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center
                     ) {
-                        CanvasPreviewContent(selectedComponent = selectedComponent, zoom = zoom)
+                        CanvasPreviewContent(
+                            selectedComponent = selectedComponent,
+                            zoom = zoom,
+                            components = components,
+                            onSelectComponent = onSelectComponent
+                        )
                     }
                     Button(onClick = { }, modifier = Modifier.fillMaxWidth()) {
                         Text("进入应用预览")
@@ -314,7 +375,11 @@ fun PhoneFramePreview(selectedComponent: String, zoom: Float) {
 fun PropertyPanel(
     modifier: Modifier = Modifier,
     selectedComponent: String,
-    zoom: Float
+    zoom: Float,
+    components: List<CanvasComponent>,
+    onSelectComponent: (String) -> Unit,
+    onToggleVisible: (Int) -> Unit,
+    onToggleLock: (Int) -> Unit
 ) {
     Surface(
         modifier = modifier,
@@ -333,10 +398,86 @@ fun PropertyPanel(
                 title = "已选组件",
                 items = listOf("名称：$selectedComponent", "缩放：${(zoom * 100).toInt()}%", "状态：预览等同真机")
             )
+            LayerList(
+                components = components,
+                onSelectComponent = onSelectComponent,
+                onToggleVisible = onToggleVisible,
+                onToggleLock = onToggleLock
+            )
             PropertyGroup(title = "尺寸与对齐", items = listOf("宽度：匹配画布", "高度：自适应", "对齐：居中"))
             PropertyGroup(title = "样式", items = listOf("圆角：12dp", "背景：主题色", "阴影：柔和"))
             PropertyGroup(title = "交互", items = listOf("点击：预览模式", "双指：缩放", "长按：显示菜单"))
             PropertyGroup(title = "适配", items = listOf("独立于真机参数", "兼容所有尺寸", "预览即真实效果"))
+        }
+    }
+}
+
+@Composable
+fun LayerList(
+    components: List<CanvasComponent>,
+    onSelectComponent: (String) -> Unit,
+    onToggleVisible: (Int) -> Unit,
+    onToggleLock: (Int) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(text = "画布图层", fontWeight = FontWeight.SemiBold)
+            if (components.isEmpty()) {
+                Text(
+                    text = "暂无组件，先从左侧添加", 
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+            } else {
+                components.forEach { component ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (component.visible) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(text = component.name, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        text = "状态：${if (component.visible) "可见" else "隐藏"} · ${if (component.locked) "已锁定" else "可编辑"}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Button(onClick = { onSelectComponent(component.name) }) {
+                                    Text("聚焦")
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = { onToggleVisible(component.id) }) {
+                                    Text(if (component.visible) "隐藏" else "显示")
+                                }
+                                OutlinedButton(onClick = { onToggleLock(component.id) }) {
+                                    Text(if (component.locked) "解锁" else "锁定")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -366,7 +507,12 @@ fun PropertyGroup(title: String, items: List<String>) {
 }
 
 @Composable
-fun CanvasPreviewContent(selectedComponent: String, zoom: Float) {
+fun CanvasPreviewContent(
+    selectedComponent: String,
+    zoom: Float,
+    components: List<CanvasComponent>,
+    onSelectComponent: (String) -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -389,58 +535,95 @@ fun CanvasPreviewContent(selectedComponent: String, zoom: Float) {
                 fontWeight = FontWeight.Medium
             )
         }
+
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "已选组件：$selectedComponent", fontWeight = FontWeight.SemiBold)
-                Surface(
+                Text(text = "画布图层", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "缩放同步：${(zoom * 100).toInt()}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (components.isEmpty()) {
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    tonalElevation = 2.dp
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "$selectedComponent 将以手机适配呈现",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedButton(onClick = { }) {
-                        Icon(Icons.Outlined.CheckCircle, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("对齐参考线")
-                    }
                     Text(
-                        text = "缩放同步：${(zoom * 100).toInt()}%",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "点击左侧组件库并添加到画布",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    components.forEach { component ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectComponent(component.name) },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (component.name == selectedComponent) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                }
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(text = component.name, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        text = "状态：${if (component.visible) "可见" else "隐藏"} · ${if (component.locked) "已锁定" else "可编辑"}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Outlined.CheckCircle,
+                                    contentDescription = null,
+                                    tint = if (component.name == selectedComponent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            OutlinedButton(onClick = { }) {
+                Text("对齐参考线")
             }
         }
     }
+}
 }
 
 @Composable
