@@ -6,19 +6,16 @@
 ## 运行步骤
 1. 确认 Termux 已安装依赖：`pkg install openjdk-17 gradle git`，并通过官方渠道安装 Android SDK（默认路径 `$HOME/Android/Sdk`）。
 2. 将仓库同步到 Termux：`git clone` 或直接复制本目录。
-3. 在仓库根目录执行脚本（可指定任务，默认 `assembleDebug`）：
+3. 在仓库根目录执行统一入口 `run.sh`，命令均使用 `bash` 调用：
    ```bash
-   bash termux_build.sh             # 默认打 Debug 包
-   bash termux_build.sh bundleRelease  # 生成 AAB
+   bash run.sh 1          # 下载/刷新依赖
+   bash run.sh 2          # 检查环境 (Termux/JDK/SDK/Gradle)
+   bash run.sh 3          # 完整构建 clean assembleDebug 并自动启动安装器（默认行为）
+   bash run.sh 4          # 仅启动安装器，安装最新 APK
+   bash run.sh 5          # 增量构建 assembleDebug 并自动启动安装器
    ```
-   如需一键使用预设任务，可直接运行根目录的 `run.sh`，它会用 bash 调用 Termux 脚本并在成功后尝试拉起安装器：
-   ```bash
-   bash run.sh             # 等同 assembleDebug
-   bash run.sh assembleRelease  # 生成正式签名前的 Release 包
-   ```
-
-> 兼容提示：旧的中文脚本名已移除，如需兼容历史调用，可使用仓库内保留的 `legacy_run_build.sh`，其内部会转发到新的 `run.sh`。
-4. 构建成功后，APK/AAB 产物位于 `app/build/outputs/` 对应子目录。
+   未传入参数时默认为选项 3。
+4. 构建成功后，APK/AAB 产物位于 `app/build/outputs/` 对应子目录，选项 3/5 会自动查找最新 APK 并尝试调起系统安装器。
 
 ## 行为细节
 - 脚本会自动检测 `TERMUX_VERSION` 并打印系统信息。
