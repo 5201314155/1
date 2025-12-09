@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -57,7 +58,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import studio.xiaoyun.ui.theme.XiaoYunTheme
 
 class MainActivity : ComponentActivity() {
@@ -71,9 +71,130 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable
+fun SelectedComponentSummary(
+    selectedComponentId: Int?,
+    selectedComponent: String,
+    zoom: Float,
+    components: List<CanvasComponent>,
+    onUpdateRegion: (Int, CanvasRegion) -> Unit,
+    onUpdateSize: (Int, Int?, Int?) -> Unit,
+    onUpdateOpacity: (Int, Float) -> Unit
+) {
+    val target = components.firstOrNull { it.id == selectedComponentId }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(text = "已选组件", fontWeight = FontWeight.SemiBold)
+            if (target == null) {
+                Text(
+                    text = "暂无选中组件，点击画布或图层列表聚焦",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "名称：${target.name} · ID #${target.id}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "缩放：${(zoom * 100).toInt()}% · 区域：${target.region.label}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    RegionSelector(target = target, onUpdateRegion = onUpdateRegion)
+                    SizeAndOpacityEditor(target = target, onUpdateSize = onUpdateSize, onUpdateOpacity = onUpdateOpacity)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RegionSelector(target: CanvasComponent, onUpdateRegion: (Int, CanvasRegion) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("区域放置", fontWeight = FontWeight.Medium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CanvasRegion.values().forEach { region ->
+                OutlinedButton(
+                    onClick = { onUpdateRegion(target.id, region) },
+                    enabled = !target.locked,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (target.region == region) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent
+                    )
+                ) {
+                    Text(region.label)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SizeAndOpacityEditor(
+    target: CanvasComponent,
+    onUpdateSize: (Int, Int?, Int?) -> Unit,
+    onUpdateOpacity: (Int, Float) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("尺寸与透明度", fontWeight = FontWeight.Medium)
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("宽度：${target.widthDp} dp")
+            Slider(
+                value = target.widthDp.toFloat(),
+                onValueChange = { onUpdateSize(target.id, it.toInt(), null) },
+                valueRange = 120f..420f,
+                enabled = !target.locked
+            )
+            Text("高度：${target.heightDp} dp")
+            Slider(
+                value = target.heightDp.toFloat(),
+                onValueChange = { onUpdateSize(target.id, null, it.toInt()) },
+                valueRange = 64f..320f,
+                enabled = !target.locked
+            )
+            Text("透明度：${(target.opacity * 100).toInt()}%")
+            Slider(
+                value = target.opacity,
+                onValueChange = { onUpdateOpacity(target.id, it) },
+                valueRange = 0.2f..1f,
+                enabled = !target.locked,
+                colors = SliderDefaults.colors(
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    thumbColor = MaterialTheme.colorScheme.primary
+                )
+            )
+            Text(
+                text = if (target.locked) "已锁定：解锁后才能修改" else "同步应用：预览即真实效果",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+enum class CanvasRegion(val label: String) {
+    Top("顶部"),
+    Middle("中部"),
+    Bottom("底部")
+}
+
 data class CanvasComponent(
     val id: Int,
     val name: String,
+    val region: CanvasRegion = CanvasRegion.Middle,
+    val widthDp: Int = 240,
+    val heightDp: Int = 96,
+    val opacity: Float = 1f,
     val visible: Boolean = true,
     val locked: Boolean = false
 )
@@ -87,7 +208,8 @@ data class DeviceProfile(
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun StudioHomeScreen() {
-    var selectedComponent by remember { mutableStateOf("按钮") }
+    var paletteSelection by remember { mutableStateOf("按钮") }
+    var focusedComponentId by remember { mutableStateOf<Int?>(null) }
     var zoom by remember { mutableFloatStateOf(1.0f) }
     var nextId by remember { mutableStateOf(1) }
     var previewMode by remember { mutableStateOf(false) }
@@ -100,25 +222,51 @@ fun StudioHomeScreen() {
     val canvasComponents = remember { mutableStateListOf<CanvasComponent>() }
 
     fun addComponentToCanvas(name: String) {
-        canvasComponents.add(CanvasComponent(id = nextId, name = name))
+        canvasComponents.add(
+            CanvasComponent(
+                id = nextId,
+                name = name,
+                region = CanvasRegion.Middle
+            )
+        )
+        focusedComponentId = nextId
         nextId += 1
     }
 
-    fun toggleVisibility(id: Int) {
+    fun updateComponent(id: Int, transform: (CanvasComponent) -> CanvasComponent) {
         val index = canvasComponents.indexOfFirst { it.id == id }
         if (index >= 0) {
-            val current = canvasComponents[index]
-            canvasComponents[index] = current.copy(visible = !current.visible)
+            canvasComponents[index] = transform(canvasComponents[index])
         }
     }
 
+    fun toggleVisibility(id: Int) {
+        updateComponent(id) { it.copy(visible = !it.visible) }
+    }
+
     fun toggleLock(id: Int) {
-        val index = canvasComponents.indexOfFirst { it.id == id }
-        if (index >= 0) {
-            val current = canvasComponents[index]
-            canvasComponents[index] = current.copy(locked = !current.locked)
+        updateComponent(id) { it.copy(locked = !it.locked) }
+    }
+
+    fun updateRegion(id: Int, region: CanvasRegion) {
+        updateComponent(id) { it.copy(region = region) }
+    }
+
+    fun updateSize(id: Int, width: Int? = null, height: Int? = null) {
+        updateComponent(id) {
+            it.copy(
+                widthDp = width ?: it.widthDp,
+                heightDp = height ?: it.heightDp
+            )
         }
     }
+
+    fun updateOpacity(id: Int, alpha: Float) {
+        updateComponent(id) { it.copy(opacity = alpha.coerceIn(0.2f, 1f)) }
+    }
+
+    val focusedComponentName =
+        canvasComponents.firstOrNull { it.id == focusedComponentId }?.name ?: paletteSelection
 
     Scaffold(
         topBar = {
@@ -158,19 +306,20 @@ fun StudioHomeScreen() {
                 .background(MaterialTheme.colorScheme.background),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            StatusRibbon(selectedComponent = selectedComponent, zoom = zoom)
+            StatusRibbon(selectedComponent = focusedComponentName, zoom = zoom)
             Row(modifier = Modifier.weight(1f)) {
                 ComponentLibraryPanel(
                     modifier = Modifier
                         .width(220.dp)
                         .fillMaxHeight(),
-                    selectedComponent = selectedComponent,
-                    onComponentSelected = { selectedComponent = it },
+                    selectedComponent = paletteSelection,
+                    onComponentSelected = { paletteSelection = it },
                     onAddToCanvas = { addComponentToCanvas(it) }
                 )
                 CanvasPreview(
                     modifier = Modifier.weight(1f),
-                    selectedComponent = selectedComponent,
+                    selectedComponentName = focusedComponentName,
+                    selectedComponentId = focusedComponentId,
                     zoom = zoom,
                     previewMode = previewMode,
                     selectedDevice = selectedDevice,
@@ -179,18 +328,28 @@ fun StudioHomeScreen() {
                     onZoomChange = { zoom = it },
                     onDeviceChange = { selectedDevice = it },
                     components = canvasComponents,
-                    onSelectComponent = { selectedComponent = it }
+                    onSelectComponent = { id ->
+                        focusedComponentId = id
+                        paletteSelection = canvasComponents.firstOrNull { it.id == id }?.name ?: paletteSelection
+                    }
                 )
                 PropertyPanel(
                     modifier = Modifier
                         .width(260.dp)
                         .fillMaxHeight(),
-                    selectedComponent = selectedComponent,
+                    selectedComponent = focusedComponentName,
+                    selectedComponentId = focusedComponentId,
                     zoom = zoom,
                     components = canvasComponents,
-                    onSelectComponent = { selectedComponent = it },
+                    onSelectComponent = { id ->
+                        focusedComponentId = id
+                        paletteSelection = canvasComponents.firstOrNull { it.id == id }?.name ?: paletteSelection
+                    },
                     onToggleVisible = { toggleVisibility(it) },
-                    onToggleLock = { toggleLock(it) }
+                    onToggleLock = { toggleLock(it) },
+                    onUpdateRegion = { id, region -> updateRegion(id, region) },
+                    onUpdateSize = { id, width, height -> updateSize(id, width, height) },
+                    onUpdateOpacity = { id, alpha -> updateOpacity(id, alpha) }
                 )
             }
             BottomToolBar()
@@ -266,7 +425,8 @@ fun ComponentLibraryPanel(
 @Composable
 fun CanvasPreview(
     modifier: Modifier = Modifier,
-    selectedComponent: String,
+    selectedComponentName: String,
+    selectedComponentId: Int?,
     zoom: Float,
     previewMode: Boolean,
     selectedDevice: DeviceProfile,
@@ -275,7 +435,7 @@ fun CanvasPreview(
     onZoomChange: (Float) -> Unit,
     onDeviceChange: (DeviceProfile) -> Unit,
     components: List<CanvasComponent>,
-    onSelectComponent: (String) -> Unit
+    onSelectComponent: (Int) -> Unit
 ) {
     Column(
         modifier = modifier
@@ -293,7 +453,8 @@ fun CanvasPreview(
             contentAlignment = Alignment.Center
         ) {
             PhoneFramePreview(
-                selectedComponent = selectedComponent,
+                selectedComponent = selectedComponentName,
+                selectedComponentId = selectedComponentId,
                 zoom = zoom,
                 previewMode = previewMode,
                 device = selectedDevice,
@@ -356,11 +517,12 @@ fun CanvasPreview(
 @Composable
 fun PhoneFramePreview(
     selectedComponent: String,
+    selectedComponentId: Int?,
     zoom: Float,
     previewMode: Boolean,
     device: DeviceProfile,
     components: List<CanvasComponent>,
-    onSelectComponent: (String) -> Unit
+    onSelectComponent: (Int) -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(32.dp),
@@ -376,51 +538,194 @@ fun PhoneFramePreview(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             FakeStatusBar(device)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color.White.copy(alpha = 0.95f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = if (previewMode) "预览 = 直接进入假手机" else "画布 = 假手机",
-                        color = Color.Black,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "组件属性只基于画布尺寸，不依赖真机参数",
-                        color = Color.Black.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = "当前选中：$selectedComponent",
-                        color = Color.Black.copy(alpha = 0.8f)
-                    )
-                    Text(
-                        text = "缩放：${(zoom * 100).toInt()}% · ${device.name}",
-                        color = Color.Black.copy(alpha = 0.8f)
-                    )
-                    LayerPreviewStack(
-                        components = components,
-                        onSelectComponent = onSelectComponent,
-                        previewMode = previewMode
-                    )
-                    Text(
-                        text = "预览按钮会切换到假手机屏幕，模拟进入应用",
-                        color = Color.Black.copy(alpha = 0.65f),
-                        style = MaterialTheme.typography.bodySmall
-                    )
+            PhoneCanvasArea(
+                zoom = zoom,
+                device = device,
+                previewMode = previewMode,
+                selectedComponent = selectedComponent,
+                selectedComponentId = selectedComponentId,
+                components = components,
+                onSelectComponent = onSelectComponent
+            )
+            FakeBottomBar(previewMode = previewMode, device = device)
+        }
+    }
+}
+
+@Composable
+fun PhoneCanvasArea(
+    zoom: Float,
+    device: DeviceProfile,
+    previewMode: Boolean,
+    selectedComponent: String,
+    selectedComponentId: Int?,
+    components: List<CanvasComponent>,
+    onSelectComponent: (Int) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f)
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color.White.copy(alpha = 0.95f))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = if (previewMode) "预览中：进入假手机屏幕" else "编辑中：画布即假手机",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.Black
+            )
+            Text(
+                text = "当前选中：$selectedComponent · 缩放 ${(zoom * 100).toInt()}% · ${device.name}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Black.copy(alpha = 0.8f)
+            )
+            Text(
+                text = "上/中/下三区分，组件属性仅基于假手机尺寸计算",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Black.copy(alpha = 0.7f)
+            )
+        }
+        CanvasRegionBlock(
+            region = CanvasRegion.Top,
+            zoom = zoom,
+            components = components,
+            selectedComponentId = selectedComponentId,
+            previewMode = previewMode,
+            onSelectComponent = onSelectComponent
+        )
+        CanvasRegionBlock(
+            region = CanvasRegion.Middle,
+            zoom = zoom,
+            components = components,
+            selectedComponentId = selectedComponentId,
+            previewMode = previewMode,
+            onSelectComponent = onSelectComponent
+        )
+        CanvasRegionBlock(
+            region = CanvasRegion.Bottom,
+            zoom = zoom,
+            components = components,
+            selectedComponentId = selectedComponentId,
+            previewMode = previewMode,
+            onSelectComponent = onSelectComponent
+        )
+    }
+}
+
+@Composable
+fun CanvasRegionBlock(
+    region: CanvasRegion,
+    zoom: Float,
+    components: List<CanvasComponent>,
+    selectedComponentId: Int?,
+    previewMode: Boolean,
+    onSelectComponent: (Int) -> Unit
+) {
+    val regionComponents = components.filter { it.region == region && it.visible }
+    val bgColor = when (region) {
+        CanvasRegion.Top -> Color(0xFFEEF2FF)
+        CanvasRegion.Middle -> Color(0xFFF7F2EA)
+        CanvasRegion.Bottom -> Color(0xFFE7F5F0)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(bgColor.copy(alpha = if (previewMode) 0.8f else 1f))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("${region.label}区域 · ${regionComponents.size} 个", fontWeight = FontWeight.Medium)
+                Text(
+                    text = if (previewMode) "预览 = 真机效果" else "编辑 = 布局占位",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (regionComponents.isEmpty()) {
+                Text(
+                    text = "暂未放置组件",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (regionComponents.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                regionComponents.forEach { component ->
+                    val isSelected = component.id == selectedComponentId
+                    val scaledWidth = (component.widthDp * zoom).dp
+                    val scaledHeight = (component.heightDp * zoom).dp
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                else Color.White
+                            )
+                            .padding(10.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(component.name, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        text = "${component.widthDp}x${component.heightDp} dp · 透明度 ${(component.opacity * 100).toInt()}%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                OutlinedButton(onClick = { onSelectComponent(component.id) }) {
+                                    Text(if (isSelected) "已聚焦" else "聚焦")
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(scaledHeight)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        MaterialTheme.colorScheme.primary.copy(alpha = component.opacity * 0.4f)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (previewMode) "预览视图" else "编辑视图",
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Black.copy(alpha = 0.18f))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = scaledWidth, height = scaledHeight)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(
+                                            MaterialTheme.colorScheme.primary.copy(alpha = component.opacity * 0.6f)
+                                        )
+                                )
+                            }
+                        }
+                    }
                 }
             }
-            FakeBottomBar(previewMode = previewMode, device = device)
         }
     }
 }
@@ -429,11 +734,15 @@ fun PhoneFramePreview(
 fun PropertyPanel(
     modifier: Modifier = Modifier,
     selectedComponent: String,
+    selectedComponentId: Int?,
     zoom: Float,
     components: List<CanvasComponent>,
-    onSelectComponent: (String) -> Unit,
+    onSelectComponent: (Int) -> Unit,
     onToggleVisible: (Int) -> Unit,
-    onToggleLock: (Int) -> Unit
+    onToggleLock: (Int) -> Unit,
+    onUpdateRegion: (Int, CanvasRegion) -> Unit,
+    onUpdateSize: (Int, Int?, Int?) -> Unit,
+    onUpdateOpacity: (Int, Float) -> Unit
 ) {
     Surface(
         modifier = modifier,
@@ -448,9 +757,14 @@ fun PropertyPanel(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(text = "属性面板", style = MaterialTheme.typography.titleMedium)
-            PropertyGroup(
-                title = "已选组件",
-                items = listOf("名称：$selectedComponent", "缩放：${(zoom * 100).toInt()}%", "状态：预览等同真机")
+            SelectedComponentSummary(
+                selectedComponentId = selectedComponentId,
+                selectedComponent = selectedComponent,
+                zoom = zoom,
+                components = components,
+                onUpdateRegion = onUpdateRegion,
+                onUpdateSize = onUpdateSize,
+                onUpdateOpacity = onUpdateOpacity
             )
             LayerList(
                 components = components,
@@ -458,8 +772,6 @@ fun PropertyPanel(
                 onToggleVisible = onToggleVisible,
                 onToggleLock = onToggleLock
             )
-            PropertyGroup(title = "尺寸与对齐", items = listOf("宽度：匹配画布", "高度：自适应", "对齐：居中"))
-            PropertyGroup(title = "样式", items = listOf("圆角：12dp", "背景：主题色", "阴影：柔和"))
             PropertyGroup(title = "交互", items = listOf("点击：预览模式", "双指：缩放", "长按：显示菜单"))
             PropertyGroup(title = "适配", items = listOf("独立于真机参数", "兼容所有尺寸", "预览即真实效果"))
         }
@@ -469,7 +781,7 @@ fun PropertyPanel(
 @Composable
 fun LayerList(
     components: List<CanvasComponent>,
-    onSelectComponent: (String) -> Unit,
+    onSelectComponent: (Int) -> Unit,
     onToggleVisible: (Int) -> Unit,
     onToggleLock: (Int) -> Unit
 ) {
@@ -516,7 +828,7 @@ fun LayerList(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                Button(onClick = { onSelectComponent(component.name) }) {
+                                Button(onClick = { onSelectComponent(component.id) }) {
                                     Text("聚焦")
                                 }
                             }
@@ -648,7 +960,7 @@ fun FakeBottomBar(previewMode: Boolean, device: DeviceProfile) {
 @Composable
 fun LayerPreviewStack(
     components: List<CanvasComponent>,
-    onSelectComponent: (String) -> Unit,
+    onSelectComponent: (Int) -> Unit,
     previewMode: Boolean
 ) {
     Column(
@@ -691,7 +1003,7 @@ fun LayerPreviewStack(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 components.take(3).forEach { component ->
-                    Chip(onClick = { onSelectComponent(component.name) }) {
+                    Chip(onClick = { onSelectComponent(component.id) }) {
                         Text(text = component.name)
                     }
                 }
