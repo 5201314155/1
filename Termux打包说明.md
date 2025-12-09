@@ -11,6 +11,11 @@
    ./Termux打包脚本.sh            # 默认打 Debug 包
    ./Termux打包脚本.sh bundleRelease  # 生成 AAB
    ```
+   如需一键使用预设任务，可直接运行根目录的 `运行打包.sh`，它会调用 Termux 脚本并处理权限：
+   ```bash
+   ./运行打包.sh            # 等同 assembleDebug
+   ./运行打包.sh assembleRelease  # 生成正式签名前的 Release 包
+   ```
 4. 构建成功后，APK/AAB 产物位于 `app/build/outputs/` 对应子目录。
 
 ## 行为细节
