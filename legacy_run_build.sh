@@ -1,37 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Legacy wrapper kept for backward compatibility; please use run_build.sh instead.
-log() { printf '[run-build-legacy] %s\n' "$*"; }
+# Legacy wrapper kept for backward compatibility; please use run.sh instead.
+log() { printf '[run-legacy] %s\n' "$*"; }
 warn() { printf '[warn] %s\n' "$*" >&2; }
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
-TERMUX_SCRIPT="$PROJECT_DIR/termux_build.sh"
-if [[ ! -f "$TERMUX_SCRIPT" ]]; then
-  warn "Termux build script not found: $TERMUX_SCRIPT"
+RUN_SCRIPT="$PROJECT_DIR/run.sh"
+if [[ ! -f "$RUN_SCRIPT" ]]; then
+  warn "Wrapper target not found: $RUN_SCRIPT"
   exit 1
 fi
 
-if [[ ! -x "$TERMUX_SCRIPT" ]]; then
-  chmod +x "$TERMUX_SCRIPT"
-  log "Added execute permission to termux_build.sh"
-fi
-
-TASK="${1:-assembleDebug}"
-log "Working directory: $PROJECT_DIR"
-log "Executing task via Termux script: $TASK"
-
-set +e
-"$TERMUX_SCRIPT" "$TASK"
-RESULT=$?
-set -e
-
-if [[ $RESULT -eq 0 ]]; then
-  log "Done. Check app/build/outputs/ for APK/Bundle artifacts."
-else
-  warn "Task failed (exit code: $RESULT). Review logs or retry with network access."
-fi
-
-exit $RESULT
+log "Forwarding arguments to run.sh"
+bash "$RUN_SCRIPT" "$@"

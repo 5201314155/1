@@ -11,13 +11,13 @@
    bash termux_build.sh             # 默认打 Debug 包
    bash termux_build.sh bundleRelease  # 生成 AAB
    ```
-   如需一键使用预设任务，可直接运行根目录的 `run_build.sh`，它会用 bash 调用 Termux 脚本：
+   如需一键使用预设任务，可直接运行根目录的 `run.sh`，它会用 bash 调用 Termux 脚本并在成功后尝试拉起安装器：
    ```bash
-   bash run_build.sh             # 等同 assembleDebug
-   bash run_build.sh assembleRelease  # 生成正式签名前的 Release 包
+   bash run.sh             # 等同 assembleDebug
+   bash run.sh assembleRelease  # 生成正式签名前的 Release 包
    ```
 
-> 兼容提示：旧的中文脚本名已移除，如需兼容历史调用，可使用仓库内保留的 `legacy_run_build.sh`，其行为与 `run_build.sh` 相同。
+> 兼容提示：旧的中文脚本名已移除，如需兼容历史调用，可使用仓库内保留的 `legacy_run_build.sh`，其内部会转发到新的 `run.sh`。
 4. 构建成功后，APK/AAB 产物位于 `app/build/outputs/` 对应子目录。
 
 ## 行为细节
