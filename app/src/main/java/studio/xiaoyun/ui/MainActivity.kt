@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,6 +30,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Chip
+import androidx.compose.material3.ChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,12 +78,25 @@ data class CanvasComponent(
     val locked: Boolean = false
 )
 
+data class DeviceProfile(
+    val name: String,
+    val logicalSize: String,
+    val note: String
+)
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun StudioHomeScreen() {
     var selectedComponent by remember { mutableStateOf("按钮") }
     var zoom by remember { mutableFloatStateOf(1.0f) }
     var nextId by remember { mutableStateOf(1) }
+    var previewMode by remember { mutableStateOf(false) }
+    val deviceProfiles = listOf(
+        DeviceProfile(name = "小屏 720p", logicalSize = "360x720dp", note = "入门机型"),
+        DeviceProfile(name = "主流 1080p", logicalSize = "411x891dp", note = "大多数机型"),
+        DeviceProfile(name = "大屏 2K", logicalSize = "480x960dp", note = "平板/大屏")
+    )
+    var selectedDevice by remember { mutableStateOf(deviceProfiles[1]) }
     val canvasComponents = remember { mutableStateListOf<CanvasComponent>() }
 
     fun addComponentToCanvas(name: String) {
@@ -156,7 +172,12 @@ fun StudioHomeScreen() {
                     modifier = Modifier.weight(1f),
                     selectedComponent = selectedComponent,
                     zoom = zoom,
+                    previewMode = previewMode,
+                    selectedDevice = selectedDevice,
+                    availableDevices = deviceProfiles,
+                    onTogglePreview = { previewMode = !previewMode },
                     onZoomChange = { zoom = it },
+                    onDeviceChange = { selectedDevice = it },
                     components = canvasComponents,
                     onSelectComponent = { selectedComponent = it }
                 )
@@ -247,7 +268,12 @@ fun CanvasPreview(
     modifier: Modifier = Modifier,
     selectedComponent: String,
     zoom: Float,
+    previewMode: Boolean,
+    selectedDevice: DeviceProfile,
+    availableDevices: List<DeviceProfile>,
+    onTogglePreview: () -> Unit,
     onZoomChange: (Float) -> Unit,
+    onDeviceChange: (DeviceProfile) -> Unit,
     components: List<CanvasComponent>,
     onSelectComponent: (String) -> Unit
 ) {
@@ -269,6 +295,8 @@ fun CanvasPreview(
             PhoneFramePreview(
                 selectedComponent = selectedComponent,
                 zoom = zoom,
+                previewMode = previewMode,
+                device = selectedDevice,
                 components = components,
                 onSelectComponent = onSelectComponent
             )
@@ -277,13 +305,18 @@ fun CanvasPreview(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Button(onClick = { }) {
-                Text("实时预览")
+            Button(onClick = onTogglePreview) {
+                Text(if (previewMode) "返回编辑" else "实时预览")
             }
             Button(onClick = { }) {
                 Text("生成代码")
             }
         }
+        DeviceSizeSelector(
+            availableDevices = availableDevices,
+            selectedDevice = selectedDevice,
+            onDeviceChange = onDeviceChange
+        )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -324,6 +357,8 @@ fun CanvasPreview(
 fun PhoneFramePreview(
     selectedComponent: String,
     zoom: Float,
+    previewMode: Boolean,
+    device: DeviceProfile,
     components: List<CanvasComponent>,
     onSelectComponent: (String) -> Unit
 ) {
@@ -340,48 +375,52 @@ fun PhoneFramePreview(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Spacer(
+            FakeStatusBar(device)
+            Box(
                 modifier = Modifier
-                    .size(width = 60.dp, height = 6.dp)
-                    .clip(RoundedCornerShape(100))
-                    .background(Color.White.copy(alpha = 0.4f))
-            )
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxSize(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.White.copy(alpha = 0.95f)),
+                contentAlignment = Alignment.Center
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "画布预览",
+                        text = if (previewMode) "预览 = 直接进入假手机" else "画布 = 假手机",
+                        color = Color.Black,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.SemiBold
                     )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CanvasPreviewContent(
-                            selectedComponent = selectedComponent,
-                            zoom = zoom,
-                            components = components,
-                            onSelectComponent = onSelectComponent
-                        )
-                    }
-                    Button(onClick = { }, modifier = Modifier.fillMaxWidth()) {
-                        Text("进入应用预览")
-                    }
+                    Text(
+                        text = "组件属性只基于画布尺寸，不依赖真机参数",
+                        color = Color.Black.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "当前选中：$selectedComponent",
+                        color = Color.Black.copy(alpha = 0.8f)
+                    )
+                    Text(
+                        text = "缩放：${(zoom * 100).toInt()}% · ${device.name}",
+                        color = Color.Black.copy(alpha = 0.8f)
+                    )
+                    LayerPreviewStack(
+                        components = components,
+                        onSelectComponent = onSelectComponent,
+                        previewMode = previewMode
+                    )
+                    Text(
+                        text = "预览按钮会切换到假手机屏幕，模拟进入应用",
+                        color = Color.Black.copy(alpha = 0.65f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
+            FakeBottomBar(previewMode = previewMode, device = device)
         }
     }
 }
@@ -521,124 +560,151 @@ fun PropertyGroup(title: String, items: List<String>) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CanvasPreviewContent(
-    selectedComponent: String,
-    zoom: Float,
-    components: List<CanvasComponent>,
-    onSelectComponent: (String) -> Unit
+fun DeviceSizeSelector(
+    availableDevices: List<DeviceProfile>,
+    selectedDevice: DeviceProfile,
+    onDeviceChange: (DeviceProfile) -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Smartphone,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = "预览等同真机 · ${(zoom * 100).toInt()}%",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium
-            )
-        }
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "画布图层", fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = "缩放同步：${(zoom * 100).toInt()}%",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (components.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "点击左侧组件库并添加到画布",
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "假手机尺寸",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            availableDevices.forEach { device ->
+                Chip(
+                    onClick = { onDeviceChange(device) },
+                    colors = ChipDefaults.chipColors(
+                        containerColor = if (device == selectedDevice) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface
                     )
-                }
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    components.forEach { component ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelectComponent(component.name) },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (component.name == selectedComponent) {
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                                } else {
-                                    MaterialTheme.colorScheme.surface
-                                }
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(text = component.name, fontWeight = FontWeight.Medium)
-                                    Text(
-                                        text = "状态：${if (component.visible) "可见" else "隐藏"} · ${if (component.locked) "已锁定" else "可编辑"}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Icon(
-                                    imageVector = Icons.Outlined.CheckCircle,
-                                    contentDescription = null,
-                                    tint = if (component.name == selectedComponent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(device.name, fontWeight = FontWeight.Medium)
+                        Text(device.logicalSize, style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
-            OutlinedButton(onClick = { }) {
-                Text("对齐参考线")
+        }
+        Text(
+            text = "组件属性仅基于假手机尺寸计算，默认兼容多设备",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+fun FakeStatusBar(device: DeviceProfile) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.14f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(imageVector = Icons.Outlined.Smartphone, contentDescription = null, tint = Color.White)
+            Column {
+                Text(text = device.name, color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text(text = device.logicalSize, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelSmall)
             }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "17:30", color = Color.White, fontWeight = FontWeight.Bold)
+            Text(text = "Wi-Fi", color = Color.White.copy(alpha = 0.8f))
+            Text(text = "电量 90%", color = Color.White.copy(alpha = 0.8f))
         }
     }
 }
+
+@Composable
+fun FakeBottomBar(previewMode: Boolean, device: DeviceProfile) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.14f))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(text = if (previewMode) "预览中 · 假手机全屏" else "编辑中 · 画布模式", color = Color.White)
+            Text(text = "多机型模拟：${device.note}", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelSmall)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
+            Text(text = "预览=进入应用", color = Color.White)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LayerPreviewStack(
+    components: List<CanvasComponent>,
+    onSelectComponent: (String) -> Unit,
+    previewMode: Boolean
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp)),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(32.dp)
+                .background(Color(0xFFFFA25C).copy(alpha = 0.6f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = "假手机顶部状态区", color = Color.White, style = MaterialTheme.typography.labelMedium)
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFFFFA25C).copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = if (previewMode) "预览画布区域" else "画布区域", color = Color(0xFFE1691B))
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .background(Color(0xFFFFA25C).copy(alpha = 0.6f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = "假手机底部操作栏", color = Color.White, style = MaterialTheme.typography.labelMedium)
+        }
+        if (components.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                components.take(3).forEach { component ->
+                    Chip(onClick = { onSelectComponent(component.name) }) {
+                        Text(text = component.name)
+                    }
+                }
+                if (components.size > 3) {
+                    Text(
+                        text = "…${components.size - 3} 个图层",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
