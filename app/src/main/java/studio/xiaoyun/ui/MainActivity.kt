@@ -292,15 +292,27 @@ fun CanvasPreview(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Slider(
-                value = zoom,
-                onValueChange = onZoomChange,
-                valueRange = 0.5f..2.5f,
-                colors = SliderDefaults.colors(
-                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                    thumbColor = MaterialTheme.colorScheme.primary
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Slider(
+                    modifier = Modifier.weight(1f),
+                    value = zoom,
+                    onValueChange = onZoomChange,
+                    valueRange = 0.5f..2.5f,
+                    colors = SliderDefaults.colors(
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        thumbColor = MaterialTheme.colorScheme.primary
+                    )
                 )
-            )
+                OutlinedButton(
+                    onClick = { onZoomChange(1f) },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text("还原")
+                }
+            }
         }
     }
 }

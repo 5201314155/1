@@ -35,8 +35,12 @@ gradle_cmd="./gradlew"
 if [[ -x "$gradle_cmd" ]]; then
   log "Using project gradlew."
 elif [[ -f "$gradle_cmd" ]]; then
-  chmod +x "$gradle_cmd"
-  log "Granted execute permission to gradlew."
+  if chmod +x "$gradle_cmd" 2>/dev/null; then
+    log "Granted execute permission to gradlew."
+  else
+    warn "Unable to change gradlew permission (likely shared storage). Falling back to bash gradlew."
+    gradle_cmd="bash gradlew"
+  fi
 else
   gradle_cmd="$(command -v gradle || true)"
   if [[ -z "$gradle_cmd" ]]; then
