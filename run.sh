@@ -71,18 +71,30 @@ prepare_aapt2() {
   local arch="$(uname -m 2>/dev/null || echo unknown)"
   local candidate=""
 
-  if command -v aapt2 >/dev/null 2>&1; then
+  # 1) 优先使用 Termux 包中的 aapt2（如安装了 termux/apt 包 android-tools 或 aapt2）
+  if [[ -z "$candidate" && -n "${PREFIX-}" ]]; then
+    local termux_aapt2
+    termux_aapt2=$(find "$PREFIX" -path "*/build-tools/*/aapt2" -type f 2>/dev/null | sort -Vr | head -n1)
+    if [[ -n "$termux_aapt2" ]]; then
+      candidate="$termux_aapt2"
+      log "检测到 Termux 包含的 aapt2: $candidate"
+    fi
+  fi
+
+  # 2) 其次使用 PATH 中的 aapt2（若 termux-openjdk 或用户手动编译提供）
+  if [[ -z "$candidate" ]] && command -v aapt2 >/dev/null 2>&1; then
     candidate="$(command -v aapt2)"
     log "检测到 Termux/系统 aapt2: $candidate"
   fi
 
+  # 3) 再尝试 ANDROID_HOME 下的 build-tools（用户自行同步到手机端的 aarch64 构建）
   if [[ -z "$candidate" && -d "$ANDROID_HOME/build-tools" ]]; then
     candidate=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name aapt2 | sort -Vr | head -n1)
     [[ -n "$candidate" ]] && log "使用 SDK build-tools 中的 aapt2: $candidate"
   fi
 
   if [[ -z "$candidate" ]]; then
-    warn "未找到本地 aapt2，可通过 pkg install aapt 或 sdkmanager 安装 build-tools 后重试"
+    warn "未找到本地 aapt2，可通过 pkg install aapt/android-tools 或同步 aarch64 build-tools 后重试"
     return
   fi
 
