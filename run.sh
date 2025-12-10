@@ -70,6 +70,34 @@ run_gradle() {
 prepare_aapt2() {
   local arch="$(uname -m 2>/dev/null || echo unknown)"
   local candidate=""
+  local cache_purged="false"
+
+  purge_incompatible_aapt2() {
+    local cache_root="$HOME/.gradle/caches"
+    [[ -d "$cache_root" ]] || return
+    local stale=()
+    while IFS= read -r path; do
+      if [[ -n "$path" ]]; then
+        stale+=("$path")
+      fi
+    done < <(find "$cache_root" -type f -name aapt2 2>/dev/null | while read -r bin; do
+      local info
+      info=$(file "$bin" 2>/dev/null || true)
+      if [[ -n "$info" && "$info" != *"$arch"* ]]; then
+        printf '%s\n' "$bin"
+      fi
+    done)
+
+    if [[ ${#stale[@]} -gt 0 ]]; then
+      log "发现与当前 $arch 不匹配的 aapt2 缓存，清理以避免调用 PC 版本"
+      for s in "${stale[@]}"; do
+        rm -f "$s" || true
+      done
+      cache_purged="true"
+    fi
+  }
+
+  purge_incompatible_aapt2
 
   # 1) 优先使用 Termux 包中的 aapt2（如安装了 termux/apt 包 android-tools 或 aapt2）
   if [[ -z "$candidate" && -n "${PREFIX-}" ]]; then
@@ -95,7 +123,8 @@ prepare_aapt2() {
 
   if [[ -z "$candidate" ]]; then
     warn "未找到本地 aapt2，可通过 pkg install aapt/android-tools 或同步 aarch64 build-tools 后重试"
-    return
+    warn "为避免继续拉取 PC 版 aapt2，将终止构建"
+    exit 1
   fi
 
   if [[ ! -x "$candidate" ]]; then
@@ -110,6 +139,10 @@ prepare_aapt2() {
   file_info=$(file "$candidate" 2>/dev/null || true)
   if [[ -n "$file_info" && "$file_info" != *"$arch"* ]]; then
     warn "aapt2 架构与当前 $arch 可能不匹配: $file_info"
+  fi
+
+  if [[ "$cache_purged" == "true" ]]; then
+    warn "已清理 PC 架构 aapt2 缓存，若仍失败请在 Termux 安装 aapt2: pkg install aapt"
   fi
 
   GRADLE_ARGS+=("-Dandroid.aapt2FromMaven=false" "-Dandroid.aapt2FromMavenOverride=$candidate")
