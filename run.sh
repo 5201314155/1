@@ -4,6 +4,8 @@ set -euo pipefail
 log() { printf '[run] %s\n' "$*"; }
 warn() { printf '[warn] %s\n' "$*" >&2; }
 
+GRADLE_ARGS=()
+
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
@@ -59,10 +61,47 @@ ensure_gradle() {
 
 run_gradle() {
   set +e
-  $GRADLE_CMD "$@" --console=plain --no-daemon
+  $GRADLE_CMD "${GRADLE_ARGS[@]}" "$@" --console=plain --no-daemon
   local result=$?
   set -e
   return $result
+}
+
+prepare_aapt2() {
+  local arch="$(uname -m 2>/dev/null || echo unknown)"
+  local candidate=""
+
+  if command -v aapt2 >/dev/null 2>&1; then
+    candidate="$(command -v aapt2)"
+    log "检测到 Termux/系统 aapt2: $candidate"
+  fi
+
+  if [[ -z "$candidate" && -d "$ANDROID_HOME/build-tools" ]]; then
+    candidate=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name aapt2 | sort -Vr | head -n1)
+    [[ -n "$candidate" ]] && log "使用 SDK build-tools 中的 aapt2: $candidate"
+  fi
+
+  if [[ -z "$candidate" ]]; then
+    warn "未找到本地 aapt2，可通过 pkg install aapt 或 sdkmanager 安装 build-tools 后重试"
+    return
+  fi
+
+  if [[ ! -x "$candidate" ]]; then
+    if chmod +x "$candidate" 2>/dev/null; then
+      log "已为 aapt2 赋权"
+    else
+      warn "aapt2 无法赋权，可能受共享存储限制"
+    fi
+  fi
+
+  local file_info
+  file_info=$(file "$candidate" 2>/dev/null || true)
+  if [[ -n "$file_info" && "$file_info" != *"$arch"* ]]; then
+    warn "aapt2 架构与当前 $arch 可能不匹配: $file_info"
+  fi
+
+  GRADLE_ARGS+=("-Dandroid.aapt2FromMaven=false" "-Dandroid.aapt2FromMavenOverride=$candidate")
+  log "已启用本地 aapt2 覆盖，避免下载 PC 版本 aapt2"
 }
 
 find_latest_apk() {
@@ -119,12 +158,14 @@ download_deps() {
 check_environment() {
   detect_env
   ensure_gradle
+  prepare_aapt2
   log "Gradle 版本信息:"
   run_gradle --version || warn "获取 Gradle 版本信息失败"
 }
 
 full_build() {
   ensure_gradle
+  prepare_aapt2
   log "执行完整构建: clean assembleDebug"
   run_gradle clean assembleDebug
   local result=$?
@@ -139,6 +180,7 @@ full_build() {
 
 incremental_build() {
   ensure_gradle
+  prepare_aapt2
   log "执行增量构建: assembleDebug"
   run_gradle assembleDebug
   local result=$?

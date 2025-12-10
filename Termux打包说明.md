@@ -9,7 +9,7 @@
 3. 在仓库根目录执行统一入口 `run.sh`，命令均使用 `bash` 调用：
    ```bash
    bash run.sh 1          # 下载/刷新依赖
-   bash run.sh 2          # 检查环境 (Termux/JDK/SDK/Gradle)
+   bash run.sh 2          # 检查环境 (Termux/JDK/SDK/Gradle + aapt2 本地化)
    bash run.sh 3          # 完整构建 clean assembleDebug 并自动启动安装器（默认行为）
    bash run.sh 4          # 仅启动安装器，安装最新 APK
    bash run.sh 5          # 增量构建 assembleDebug 并自动启动安装器
@@ -22,6 +22,7 @@
 - 自动探测 `JAVA_HOME`（基于 `java` 可执行所在路径）与 `ANDROID_HOME`（默认为 `$HOME/Android/Sdk`）。
 - 优先使用项目内 `gradlew`；若仓库存放在共享存储导致无法 `chmod +x`，脚本会自动改用 `bash gradlew` 调用；如不存在 wrapper 则退回 Termux 全局 `gradle`。
 - 执行命令附带 `--console=plain --no-daemon` 以便在移动端终端查看全量日志。
+- aapt2 默认优先使用本机版本：脚本会依次查找 `pkg install aapt` 提供的 aapt2 或 SDK `build-tools/*/aapt2`，并通过 `-Dandroid.aapt2FromMaven=false -Dandroid.aapt2FromMavenOverride=<path>` 强制走本地二进制，避免下载 PC 架构的 aapt2 在手机端报错；若未找到匹配架构，会给出提示，需手动安装后重试。
 
 ## 常见问题
 - **提示找不到 AGP / 依赖**：请确保已执行 `sdkmanager --licenses` 并完成网络下载；必要时开启科学上网。
