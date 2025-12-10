@@ -77,6 +77,7 @@ fun SelectedComponentSummary(
     selectedComponent: String,
     zoom: Float,
     components: List<CanvasComponent>,
+    device: DeviceProfile,
     onUpdateRegion: (Int, CanvasRegion) -> Unit,
     onUpdateSize: (Int, Int?, Int?) -> Unit,
     onUpdateOpacity: (Int, Float) -> Unit
@@ -107,12 +108,22 @@ fun SelectedComponentSummary(
                         fontWeight = FontWeight.Medium
                     )
                     Text(
+                        text = "基于假手机：${device.name}（${device.logicalSize}）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
                         text = "缩放：${(zoom * 100).toInt()}% · 区域：${target.region.label}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     RegionSelector(target = target, onUpdateRegion = onUpdateRegion)
-                    SizeAndOpacityEditor(target = target, onUpdateSize = onUpdateSize, onUpdateOpacity = onUpdateOpacity)
+                    SizeAndOpacityEditor(
+                        target = target,
+                        device = device,
+                        onUpdateSize = onUpdateSize,
+                        onUpdateOpacity = onUpdateOpacity
+                    )
                 }
             }
         }
@@ -142,24 +153,32 @@ fun RegionSelector(target: CanvasComponent, onUpdateRegion: (Int, CanvasRegion) 
 @Composable
 fun SizeAndOpacityEditor(
     target: CanvasComponent,
+    device: DeviceProfile,
     onUpdateSize: (Int, Int?, Int?) -> Unit,
     onUpdateOpacity: (Int, Float) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("尺寸与透明度", fontWeight = FontWeight.Medium)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("宽度：${target.widthDp} dp")
+            val maxWidth = device.widthDp.coerceAtLeast(240)
+            val regionHeightFactor = when (target.region) {
+                CanvasRegion.Top -> 0.28f
+                CanvasRegion.Middle -> 0.46f
+                CanvasRegion.Bottom -> 0.26f
+            }
+            val maxHeight = (device.heightDp * regionHeightFactor).toInt().coerceAtLeast(96)
+            Text("宽度：${target.widthDp} dp / 限制 ${maxWidth}dp（按手机宽度）")
             Slider(
                 value = target.widthDp.toFloat(),
-                onValueChange = { onUpdateSize(target.id, it.toInt(), null) },
-                valueRange = 120f..420f,
+                onValueChange = { onUpdateSize(target.id, it.toInt().coerceAtMost(maxWidth), null) },
+                valueRange = 96f..maxWidth.toFloat(),
                 enabled = !target.locked
             )
-            Text("高度：${target.heightDp} dp")
+            Text("高度：${target.heightDp} dp / 区域上限 ${maxHeight}dp")
             Slider(
                 value = target.heightDp.toFloat(),
-                onValueChange = { onUpdateSize(target.id, null, it.toInt()) },
-                valueRange = 64f..320f,
+                onValueChange = { onUpdateSize(target.id, null, it.toInt().coerceAtMost(maxHeight)) },
+                valueRange = 64f..maxHeight.toFloat(),
                 enabled = !target.locked
             )
             Text("透明度：${(target.opacity * 100).toInt()}%")
@@ -202,7 +221,9 @@ data class CanvasComponent(
 data class DeviceProfile(
     val name: String,
     val logicalSize: String,
-    val note: String
+    val note: String,
+    val widthDp: Int,
+    val heightDp: Int
 )
 
 @Composable
@@ -214,9 +235,9 @@ fun StudioHomeScreen() {
     var nextId by remember { mutableStateOf(1) }
     var previewMode by remember { mutableStateOf(false) }
     val deviceProfiles = listOf(
-        DeviceProfile(name = "小屏 720p", logicalSize = "360x720dp", note = "入门机型"),
-        DeviceProfile(name = "主流 1080p", logicalSize = "411x891dp", note = "大多数机型"),
-        DeviceProfile(name = "大屏 2K", logicalSize = "480x960dp", note = "平板/大屏")
+        DeviceProfile(name = "小屏 720p", logicalSize = "360x720dp", note = "入门机型", widthDp = 360, heightDp = 720),
+        DeviceProfile(name = "主流 1080p", logicalSize = "411x891dp", note = "大多数机型", widthDp = 411, heightDp = 891),
+        DeviceProfile(name = "大屏 2K", logicalSize = "480x960dp", note = "平板/大屏", widthDp = 480, heightDp = 960)
     )
     var selectedDevice by remember { mutableStateOf(deviceProfiles[1]) }
     val canvasComponents = remember { mutableStateListOf<CanvasComponent>() }
@@ -340,6 +361,7 @@ fun StudioHomeScreen() {
                     selectedComponent = focusedComponentName,
                     selectedComponentId = focusedComponentId,
                     zoom = zoom,
+                    device = selectedDevice,
                     components = canvasComponents,
                     onSelectComponent = { id ->
                         focusedComponentId = id
@@ -592,6 +614,7 @@ fun PhoneCanvasArea(
         CanvasRegionBlock(
             region = CanvasRegion.Top,
             zoom = zoom,
+            device = device,
             components = components,
             selectedComponentId = selectedComponentId,
             previewMode = previewMode,
@@ -600,6 +623,7 @@ fun PhoneCanvasArea(
         CanvasRegionBlock(
             region = CanvasRegion.Middle,
             zoom = zoom,
+            device = device,
             components = components,
             selectedComponentId = selectedComponentId,
             previewMode = previewMode,
@@ -608,6 +632,7 @@ fun PhoneCanvasArea(
         CanvasRegionBlock(
             region = CanvasRegion.Bottom,
             zoom = zoom,
+            device = device,
             components = components,
             selectedComponentId = selectedComponentId,
             previewMode = previewMode,
@@ -620,12 +645,19 @@ fun PhoneCanvasArea(
 fun CanvasRegionBlock(
     region: CanvasRegion,
     zoom: Float,
+    device: DeviceProfile,
     components: List<CanvasComponent>,
     selectedComponentId: Int?,
     previewMode: Boolean,
     onSelectComponent: (Int) -> Unit
 ) {
     val regionComponents = components.filter { it.region == region && it.visible }
+    val regionHeight = when (region) {
+        CanvasRegion.Top -> (device.heightDp * 0.24f).toInt()
+        CanvasRegion.Middle -> (device.heightDp * 0.52f).toInt()
+        CanvasRegion.Bottom -> (device.heightDp * 0.24f).toInt()
+    }
+    val availableWidth = device.widthDp
     val bgColor = when (region) {
         CanvasRegion.Top -> Color(0xFFEEF2FF)
         CanvasRegion.Middle -> Color(0xFFF7F2EA)
@@ -648,7 +680,7 @@ fun CanvasRegionBlock(
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("${region.label}区域 · ${regionComponents.size} 个", fontWeight = FontWeight.Medium)
                 Text(
-                    text = if (previewMode) "预览 = 真机效果" else "编辑 = 布局占位",
+                    text = "宽 ${availableWidth}dp · 高 ${regionHeight}dp · ${if (previewMode) "预览=真机效果" else "编辑=假手机布局"}",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -663,6 +695,11 @@ fun CanvasRegionBlock(
         }
         if (regionComponents.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "移动端适配：宽度<=${availableWidth}dp · 区域高度<=${regionHeight}dp",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 regionComponents.forEach { component ->
                     val isSelected = component.id == selectedComponentId
                     val scaledWidth = (component.widthDp * zoom).dp
@@ -736,6 +773,7 @@ fun PropertyPanel(
     selectedComponent: String,
     selectedComponentId: Int?,
     zoom: Float,
+    device: DeviceProfile,
     components: List<CanvasComponent>,
     onSelectComponent: (Int) -> Unit,
     onToggleVisible: (Int) -> Unit,
@@ -762,6 +800,7 @@ fun PropertyPanel(
                 selectedComponent = selectedComponent,
                 zoom = zoom,
                 components = components,
+                device = device,
                 onUpdateRegion = onUpdateRegion,
                 onUpdateSize = onUpdateSize,
                 onUpdateOpacity = onUpdateOpacity
@@ -901,7 +940,7 @@ fun DeviceSizeSelector(
             }
         }
         Text(
-            text = "组件属性仅基于假手机尺寸计算，默认兼容多设备",
+            text = "仅按手机端尺寸计算属性，默认兼容多机型",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
