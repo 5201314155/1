@@ -23,7 +23,7 @@
 - 自动探测 `JAVA_HOME`（基于 `java` 可执行所在路径）与 `ANDROID_HOME`（默认为 `$HOME/Android/Sdk`）。
 - 优先使用项目内 `gradlew`；若仓库存放在共享存储导致无法 `chmod +x`，脚本会自动改用 `bash gradlew` 调用；如不存在 wrapper 则退回 Termux 全局 `gradle`。
 - 执行命令附带 `--console=plain --no-daemon` 以便在移动端终端查看全量日志。
-- aapt2 默认优先使用本机版本：脚本会依次查找 Termux 包路径（含 `android-tools`/`aapt` 安装的 `build-tools/*/aapt2`）、PATH 下自带的 aapt2、以及 ANDROID_HOME 的 `build-tools/*/aapt2`，并通过 `-Dandroid.aapt2FromMaven=false -Dandroid.aapt2FromMavenOverride=<path>` 强制走本地二进制，避免下载 PC 架构的 aapt2 在手机端报错；若在隔离的 `.gradle-mobile` 缓存中发现 PC 架构的 aapt2，会整体删除对应 transform 目录后再构建；若仍未找到匹配架构，脚本会终止并提示先用 `pkg install aapt` 安装。
+- aapt2 默认优先使用本机版本：脚本会依次查找 Termux 包路径（含 `android-tools`/`aapt` 安装的 `build-tools/*/aapt2`）、PATH、自带 SDK `build-tools/*/aapt2`，并通过 `-Dandroid.aapt2FromMaven=false -Dandroid.aapt2FromMavenOverride=<path>` 强制走本地二进制；在 Termux 且未找到可用 aapt2 时，会自动尝试 `pkg install -y aapt android-tools` 下载匹配架构；构建前会清理隔离 `.gradle-mobile` 缓存内的 PC 架构 aapt2 变换目录，确保始终使用手机端可执行的 aapt2。
 
 ## 常见问题
 - **提示找不到 AGP / 依赖**：请确保已执行 `sdkmanager --licenses` 并完成网络下载；必要时开启科学上网。

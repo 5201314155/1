@@ -84,21 +84,15 @@ prepare_aapt2() {
     local cache_root="${GRADLE_USER_HOME:-$HOME/.gradle}/caches"
     [[ -d "$cache_root" ]] || return
 
-    local stale_dirs=()
-    while IFS= read -r bin; do
-      [[ -n "$bin" ]] || continue
-      local info
-      info=$(file "$bin" 2>/dev/null || true)
-      if [[ -n "$info" && "$info" != *"$arch"* ]]; then
-        local dir
-        dir="$(dirname "$bin")"
-        stale_dirs+=("$dir")
-      fi
-    done < <(find "$cache_root" -type f -name aapt2 2>/dev/null)
+    local stale_roots=()
+    while IFS= read -r dir; do
+      [[ -n "$dir" ]] || continue
+      stale_roots+=("$dir")
+    done < <(find "$cache_root" -type d -name "*aapt2*" -prune 2>/dev/null)
 
-    if [[ ${#stale_dirs[@]} -gt 0 ]]; then
-      log "发现与当前 $arch 不匹配的 aapt2 缓存，删除对应 transform 目录以避免 PC 版本"
-      for dir in "${stale_dirs[@]}"; do
+    if [[ ${#stale_roots[@]} -gt 0 ]]; then
+      log "清理与当前 $arch 不匹配的 aapt2 变换缓存，使用纯手机端工具链"
+      for dir in "${stale_roots[@]}"; do
         rm -rf "$dir" || true
       done
       cache_purged="true"
@@ -129,9 +123,19 @@ prepare_aapt2() {
     [[ -n "$candidate" ]] && log "使用 SDK build-tools 中的 aapt2: $candidate"
   fi
 
+  # 4) 若未找到且位于 Termux，尝试自动安装 aapt/android-tools 以获取 aapt2
+  if [[ -z "$candidate" && -n "${TERMUX_VERSION-}" && command -v pkg >/dev/null 2>&1 ]]; then
+    warn "未找到可用的 aapt2，尝试自动安装 termux 包 aapt 与 android-tools"
+    if pkg install -y aapt android-tools >/dev/null 2>&1; then
+      candidate=$(find "${PREFIX:-/data/data/com.termux/files/usr}" -path "*/build-tools/*/aapt2" -type f 2>/dev/null | sort -Vr | head -n1)
+      [[ -z "$candidate" ]] && candidate="$(command -v aapt2 || true)"
+    else
+      warn "自动安装 aapt/android-tools 失败，请检查网络或源配置"
+    fi
+  fi
+
   if [[ -z "$candidate" ]]; then
-    warn "未找到本地 aapt2，可通过 pkg install aapt/android-tools 或同步 aarch64 build-tools 后重试"
-    warn "为避免继续拉取 PC 版 aapt2，将终止构建"
+    warn "未找到本地 aapt2，已清理 PC 架构缓存但无法继续，请在 Termux 安装 aapt/android-tools 或同步 aarch64 build-tools 后重试"
     exit 1
   fi
 
@@ -153,7 +157,7 @@ prepare_aapt2() {
     warn "已清理 PC 架构 aapt2 缓存，若仍失败请在 Termux 安装 aapt2: pkg install aapt"
   fi
 
-  GRADLE_ARGS+=("-Dandroid.aapt2FromMaven=false" "-Dandroid.aapt2FromMavenOverride=$candidate")
+  GRADLE_ARGS+=("-Dandroid.aapt2FromMaven=false" "-Dandroid.aapt2FromMavenOverride=$candidate" "-Dandroid.useAndroidX=true")
   log "已启用本地 aapt2 覆盖，避免下载 PC 版本 aapt2"
 }
 
