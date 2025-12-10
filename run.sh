@@ -12,6 +12,14 @@ cd "$PROJECT_DIR"
 log "脚本所在目录: $PROJECT_DIR"
 log "系统信息: $(uname -a)"
 
+if [[ -z "${GRADLE_USER_HOME-}" ]]; then
+  export GRADLE_USER_HOME="$PROJECT_DIR/.gradle-mobile"
+  mkdir -p "$GRADLE_USER_HOME"
+  log "已设置隔离的 GRADLE_USER_HOME: $GRADLE_USER_HOME"
+else
+  log "使用外部指定的 GRADLE_USER_HOME: $GRADLE_USER_HOME"
+fi
+
 detect_env() {
   if [[ -n "${TERMUX_VERSION-}" ]]; then
     log "Termux 版本: $TERMUX_VERSION"
@@ -73,25 +81,25 @@ prepare_aapt2() {
   local cache_purged="false"
 
   purge_incompatible_aapt2() {
-    local cache_root="$HOME/.gradle/caches"
+    local cache_root="${GRADLE_USER_HOME:-$HOME/.gradle}/caches"
     [[ -d "$cache_root" ]] || return
-    local stale=()
-    while IFS= read -r path; do
-      if [[ -n "$path" ]]; then
-        stale+=("$path")
-      fi
-    done < <(find "$cache_root" -type f -name aapt2 2>/dev/null | while read -r bin; do
+
+    local stale_dirs=()
+    while IFS= read -r bin; do
+      [[ -n "$bin" ]] || continue
       local info
       info=$(file "$bin" 2>/dev/null || true)
       if [[ -n "$info" && "$info" != *"$arch"* ]]; then
-        printf '%s\n' "$bin"
+        local dir
+        dir="$(dirname "$bin")"
+        stale_dirs+=("$dir")
       fi
-    done)
+    done < <(find "$cache_root" -type f -name aapt2 2>/dev/null)
 
-    if [[ ${#stale[@]} -gt 0 ]]; then
-      log "发现与当前 $arch 不匹配的 aapt2 缓存，清理以避免调用 PC 版本"
-      for s in "${stale[@]}"; do
-        rm -f "$s" || true
+    if [[ ${#stale_dirs[@]} -gt 0 ]]; then
+      log "发现与当前 $arch 不匹配的 aapt2 缓存，删除对应 transform 目录以避免 PC 版本"
+      for dir in "${stale_dirs[@]}"; do
+        rm -rf "$dir" || true
       done
       cache_purged="true"
     fi
