@@ -133,6 +133,7 @@ fun SelectedComponentSummary(
                         onUpdateSize = onUpdateSize,
                         onUpdateOpacity = onUpdateOpacity
                     )
+                    LayoutValidationCard(target = target, device = device)
                 }
             }
         }
@@ -200,13 +201,8 @@ fun SizeAndOpacityEditor(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("尺寸与透明度", fontWeight = FontWeight.Medium)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            val maxWidth = (device.widthDp - target.paddingDp * 2).coerceAtLeast(120)
-            val regionHeightFactor = when (target.region) {
-                CanvasRegion.Top -> 0.28f
-                CanvasRegion.Middle -> 0.46f
-                CanvasRegion.Bottom -> 0.26f
-            }
-            val maxHeight = (device.heightDp * regionHeightFactor).toInt().coerceAtLeast(96)
+            val maxWidth = maxRegionWidth(device, target)
+            val maxHeight = regionHeightFor(device, target.region).coerceAtLeast(96)
             Text("宽度：${target.widthDp} dp / 限制 ${maxWidth}dp（按手机宽度）")
             Slider(
                 value = target.widthDp.toFloat(),
@@ -237,6 +233,64 @@ fun SizeAndOpacityEditor(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+fun LayoutValidationCard(target: CanvasComponent, device: DeviceProfile) {
+    val regionHeight = regionHeightFor(device, target.region)
+    val maxWidth = maxRegionWidth(device, target)
+    val warnings = buildList {
+        if (target.widthDp > maxWidth) {
+            add("宽度超过假手机可用宽度（上限 ${maxWidth}dp）")
+        }
+        if (target.heightDp > regionHeight) {
+            add("高度超过 ${target.region.label} 区域上限（${regionHeight}dp）")
+        }
+        if (target.opacity < 0.25f) {
+            add("透明度过低，预览中难以辨认")
+        }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(text = "假手机校验", fontWeight = FontWeight.SemiBold)
+            if (warnings.isEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(
+                        imageVector = Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "当前配置符合假手机尺寸限制，预览与真机一致",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                warnings.forEach { warning ->
+                    Text(
+                        text = "• $warning",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                Text(
+                    text = "请调整宽高或内边距，确保画布与假手机对齐",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -273,6 +327,16 @@ data class DeviceProfile(
     val widthDp: Int,
     val heightDp: Int
 )
+
+fun regionHeightFor(device: DeviceProfile, region: CanvasRegion): Int =
+    when (region) {
+        CanvasRegion.Top -> (device.heightDp * 0.24f).toInt()
+        CanvasRegion.Middle -> (device.heightDp * 0.52f).toInt()
+        CanvasRegion.Bottom -> (device.heightDp * 0.24f).toInt()
+    }
+
+fun maxRegionWidth(device: DeviceProfile, component: CanvasComponent): Int =
+    (device.widthDp - component.paddingDp * 2).coerceAtLeast(96)
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -757,11 +821,7 @@ fun CanvasRegionBlock(
     onSelectComponent: (Int) -> Unit
 ) {
     val regionComponents = components.filter { it.region == region && it.visible }
-    val regionHeight = when (region) {
-        CanvasRegion.Top -> (device.heightDp * 0.24f).toInt()
-        CanvasRegion.Middle -> (device.heightDp * 0.52f).toInt()
-        CanvasRegion.Bottom -> (device.heightDp * 0.24f).toInt()
-    }
+    val regionHeight = regionHeightFor(device, region)
     val availableWidth = device.widthDp
     val bgColor = when (region) {
         CanvasRegion.Top -> Color(0xFFEEF2FF)
@@ -807,8 +867,8 @@ fun CanvasRegionBlock(
                 )
                 regionComponents.forEach { component ->
                     val isSelected = component.id == selectedComponentId
-                    val maxRegionWidth = (availableWidth - component.paddingDp * 2).coerceAtLeast(96)
-                    val scaledWidth = (component.widthDp.coerceAtMost(maxRegionWidth) * zoom).dp
+                    val maxWidth = maxRegionWidth(device, component)
+                    val scaledWidth = (component.widthDp.coerceAtMost(maxWidth) * zoom).dp
                     val scaledHeight = (component.heightDp * zoom).dp
                     val alignment = when (component.alignment) {
                         CanvasAlignment.Start -> Alignment.CenterStart
