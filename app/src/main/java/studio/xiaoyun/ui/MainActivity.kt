@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.align
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -81,7 +82,9 @@ fun SelectedComponentSummary(
     device: DeviceProfile,
     onUpdateRegion: (Int, CanvasRegion) -> Unit,
     onUpdateSize: (Int, Int?, Int?) -> Unit,
-    onUpdateOpacity: (Int, Float) -> Unit
+    onUpdateOpacity: (Int, Float) -> Unit,
+    onUpdateAlignment: (Int, CanvasAlignment) -> Unit,
+    onUpdatePadding: (Int, Int) -> Unit
 ) {
     val target = components.firstOrNull { it.id == selectedComponentId }
     Card(
@@ -119,6 +122,11 @@ fun SelectedComponentSummary(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     RegionSelector(target = target, onUpdateRegion = onUpdateRegion)
+                    AlignmentAndPaddingEditor(
+                        target = target,
+                        onUpdateAlignment = onUpdateAlignment,
+                        onUpdatePadding = onUpdatePadding
+                    )
                     SizeAndOpacityEditor(
                         target = target,
                         device = device,
@@ -152,6 +160,37 @@ fun RegionSelector(target: CanvasComponent, onUpdateRegion: (Int, CanvasRegion) 
 }
 
 @Composable
+fun AlignmentAndPaddingEditor(
+    target: CanvasComponent,
+    onUpdateAlignment: (Int, CanvasAlignment) -> Unit,
+    onUpdatePadding: (Int, Int) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("对齐与内边距", fontWeight = FontWeight.Medium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CanvasAlignment.values().forEach { alignment ->
+                OutlinedButton(
+                    onClick = { onUpdateAlignment(target.id, alignment) },
+                    enabled = !target.locked,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (target.alignment == alignment) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else Color.Transparent
+                    )
+                ) {
+                    Text(alignment.label)
+                }
+            }
+        }
+        Text("内边距：${target.paddingDp} dp（按假手机宽度预留空间）")
+        Slider(
+            value = target.paddingDp.toFloat(),
+            onValueChange = { onUpdatePadding(target.id, it.toInt()) },
+            valueRange = 0f..48f,
+            enabled = !target.locked
+        )
+    }
+}
+
+@Composable
 fun SizeAndOpacityEditor(
     target: CanvasComponent,
     device: DeviceProfile,
@@ -161,7 +200,7 @@ fun SizeAndOpacityEditor(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("尺寸与透明度", fontWeight = FontWeight.Medium)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            val maxWidth = device.widthDp.coerceAtLeast(240)
+            val maxWidth = (device.widthDp - target.paddingDp * 2).coerceAtLeast(120)
             val regionHeightFactor = when (target.region) {
                 CanvasRegion.Top -> 0.28f
                 CanvasRegion.Middle -> 0.46f
@@ -216,8 +255,16 @@ data class CanvasComponent(
     val heightDp: Int = 96,
     val opacity: Float = 1f,
     val visible: Boolean = true,
-    val locked: Boolean = false
+    val locked: Boolean = false,
+    val alignment: CanvasAlignment = CanvasAlignment.Center,
+    val paddingDp: Int = 16
 )
+
+enum class CanvasAlignment(val label: String, val alignment: Alignment) {
+    Start("左对齐", Alignment.CenterStart),
+    Center("居中", Alignment.Center),
+    End("右对齐", Alignment.CenterEnd)
+}
 
 data class DeviceProfile(
     val name: String,
@@ -285,6 +332,21 @@ fun StudioHomeScreen() {
 
     fun updateOpacity(id: Int, alpha: Float) {
         updateComponent(id) { it.copy(opacity = alpha.coerceIn(0.2f, 1f)) }
+    }
+
+    fun updateAlignment(id: Int, alignment: CanvasAlignment) {
+        updateComponent(id) { it.copy(alignment = alignment) }
+    }
+
+    fun updatePadding(id: Int, padding: Int) {
+        updateComponent(id) {
+            val safePadding = padding.coerceIn(0, 64)
+            val widthLimit = (selectedDevice.widthDp - safePadding * 2).coerceAtLeast(96)
+            it.copy(
+                paddingDp = safePadding,
+                widthDp = it.widthDp.coerceAtMost(widthLimit)
+            )
+        }
     }
 
     val focusedComponentName =
@@ -372,7 +434,9 @@ fun StudioHomeScreen() {
                     onToggleLock = { toggleLock(it) },
                     onUpdateRegion = { id, region -> updateRegion(id, region) },
                     onUpdateSize = { id, width, height -> updateSize(id, width, height) },
-                    onUpdateOpacity = { id, alpha -> updateOpacity(id, alpha) }
+                    onUpdateOpacity = { id, alpha -> updateOpacity(id, alpha) },
+                    onUpdateAlignment = { id, alignment -> updateAlignment(id, alignment) },
+                    onUpdatePadding = { id, padding -> updatePadding(id, padding) }
                 )
             }
             BottomToolBar()
@@ -704,8 +768,14 @@ fun CanvasRegionBlock(
                 )
                 regionComponents.forEach { component ->
                     val isSelected = component.id == selectedComponentId
-                    val scaledWidth = (component.widthDp * zoom).dp
+                    val maxRegionWidth = (availableWidth - component.paddingDp * 2).coerceAtLeast(96)
+                    val scaledWidth = (component.widthDp.coerceAtMost(maxRegionWidth) * zoom).dp
                     val scaledHeight = (component.heightDp * zoom).dp
+                    val alignment = when (component.alignment) {
+                        CanvasAlignment.Start -> Alignment.CenterStart
+                        CanvasAlignment.Center -> Alignment.Center
+                        CanvasAlignment.End -> Alignment.CenterEnd
+                    }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -725,7 +795,7 @@ fun CanvasRegionBlock(
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(component.name, fontWeight = FontWeight.SemiBold)
                                     Text(
-                                        text = "${component.widthDp}x${component.heightDp} dp · 透明度 ${(component.opacity * 100).toInt()}%",
+                                        text = "${component.widthDp}x${component.heightDp} dp · 透明度 ${(component.opacity * 100).toInt()}% · ${component.alignment.label} · 内边距 ${component.paddingDp}dp",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -754,6 +824,8 @@ fun CanvasRegionBlock(
                                 )
                                 Box(
                                     modifier = Modifier
+                                        .align(alignment)
+                                        .padding(horizontal = component.paddingDp.dp)
                                         .size(width = scaledWidth, height = scaledHeight)
                                         .clip(RoundedCornerShape(10.dp))
                                         .background(
@@ -782,7 +854,9 @@ fun PropertyPanel(
     onToggleLock: (Int) -> Unit,
     onUpdateRegion: (Int, CanvasRegion) -> Unit,
     onUpdateSize: (Int, Int?, Int?) -> Unit,
-    onUpdateOpacity: (Int, Float) -> Unit
+    onUpdateOpacity: (Int, Float) -> Unit,
+    onUpdateAlignment: (Int, CanvasAlignment) -> Unit,
+    onUpdatePadding: (Int, Int) -> Unit
 ) {
     Surface(
         modifier = modifier,
@@ -805,7 +879,9 @@ fun PropertyPanel(
                 device = device,
                 onUpdateRegion = onUpdateRegion,
                 onUpdateSize = onUpdateSize,
-                onUpdateOpacity = onUpdateOpacity
+                onUpdateOpacity = onUpdateOpacity,
+                onUpdateAlignment = onUpdateAlignment,
+                onUpdatePadding = onUpdatePadding
             )
             LayerList(
                 components = components,
