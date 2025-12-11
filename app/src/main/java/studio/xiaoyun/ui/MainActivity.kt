@@ -562,6 +562,7 @@ fun PhoneFramePreview(
         ) {
             FakeStatusBar(device)
             PhoneCanvasArea(
+                modifier = Modifier.weight(1f),
                 zoom = zoom,
                 device = device,
                 previewMode = previewMode,
@@ -577,6 +578,7 @@ fun PhoneFramePreview(
 
 @Composable
 fun PhoneCanvasArea(
+    modifier: Modifier = Modifier,
     zoom: Float,
     device: DeviceProfile,
     previewMode: Boolean,
@@ -586,9 +588,8 @@ fun PhoneCanvasArea(
     onSelectComponent: (Int) -> Unit
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .weight(1f)
             .clip(RoundedCornerShape(24.dp))
             .background(Color.White.copy(alpha = 0.95f))
             .padding(14.dp),
