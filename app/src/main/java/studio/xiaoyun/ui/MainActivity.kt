@@ -84,7 +84,9 @@ fun SelectedComponentSummary(
     onUpdateSize: (Int, Int?, Int?) -> Unit,
     onUpdateOpacity: (Int, Float) -> Unit,
     onUpdateAlignment: (Int, CanvasAlignment) -> Unit,
-    onUpdatePadding: (Int, Int) -> Unit
+    onUpdatePadding: (Int, Int) -> Unit,
+    onFitWidth: (Int) -> Unit,
+    onFitHeight: (Int) -> Unit
 ) {
     val target = components.firstOrNull { it.id == selectedComponentId }
     Card(
@@ -131,7 +133,9 @@ fun SelectedComponentSummary(
                         target = target,
                         device = device,
                         onUpdateSize = onUpdateSize,
-                        onUpdateOpacity = onUpdateOpacity
+                        onUpdateOpacity = onUpdateOpacity,
+                        onFitWidth = onFitWidth,
+                        onFitHeight = onFitHeight
                     )
                     LayoutValidationCard(target = target, device = device)
                 }
@@ -196,7 +200,9 @@ fun SizeAndOpacityEditor(
     target: CanvasComponent,
     device: DeviceProfile,
     onUpdateSize: (Int, Int?, Int?) -> Unit,
-    onUpdateOpacity: (Int, Float) -> Unit
+    onUpdateOpacity: (Int, Float) -> Unit,
+    onFitWidth: (Int) -> Unit,
+    onFitHeight: (Int) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("尺寸与透明度", fontWeight = FontWeight.Medium)
@@ -210,6 +216,14 @@ fun SizeAndOpacityEditor(
                 valueRange = 96f..maxWidth.toFloat(),
                 enabled = !target.locked
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { onFitWidth(target.id) }, enabled = !target.locked) {
+                    Text("撑满可用宽度")
+                }
+                OutlinedButton(onClick = { onFitHeight(target.id) }, enabled = !target.locked) {
+                    Text("贴合当前区域")
+                }
+            }
             Text("高度：${target.heightDp} dp / 区域上限 ${maxHeight}dp")
             Slider(
                 value = target.heightDp.toFloat(),
@@ -394,6 +408,19 @@ fun StudioHomeScreen() {
         }
     }
 
+    fun fitWidthToDevice(id: Int) {
+        updateComponent(id) { component ->
+            component.copy(widthDp = maxRegionWidth(selectedDevice, component))
+        }
+    }
+
+    fun fitHeightToRegion(id: Int) {
+        updateComponent(id) { component ->
+            val regionMax = regionHeightFor(selectedDevice, component.region).coerceAtLeast(64)
+            component.copy(heightDp = regionMax)
+        }
+    }
+
     fun updateOpacity(id: Int, alpha: Float) {
         updateComponent(id) { it.copy(opacity = alpha.coerceIn(0.2f, 1f)) }
     }
@@ -539,7 +566,9 @@ fun StudioHomeScreen() {
                     onUpdateSize = { id, width, height -> updateSize(id, width, height) },
                     onUpdateOpacity = { id, alpha -> updateOpacity(id, alpha) },
                     onUpdateAlignment = { id, alignment -> updateAlignment(id, alignment) },
-                    onUpdatePadding = { id, padding -> updatePadding(id, padding) }
+                    onUpdatePadding = { id, padding -> updatePadding(id, padding) },
+                    onFitWidth = { id -> fitWidthToDevice(id) },
+                    onFitHeight = { id -> fitHeightToRegion(id) }
                 )
             }
             BottomToolBar()
@@ -959,7 +988,9 @@ fun PropertyPanel(
     onUpdateSize: (Int, Int?, Int?) -> Unit,
     onUpdateOpacity: (Int, Float) -> Unit,
     onUpdateAlignment: (Int, CanvasAlignment) -> Unit,
-    onUpdatePadding: (Int, Int) -> Unit
+    onUpdatePadding: (Int, Int) -> Unit,
+    onFitWidth: (Int) -> Unit,
+    onFitHeight: (Int) -> Unit
 ) {
     Surface(
         modifier = modifier,
@@ -984,7 +1015,9 @@ fun PropertyPanel(
                 onUpdateSize = onUpdateSize,
                 onUpdateOpacity = onUpdateOpacity,
                 onUpdateAlignment = onUpdateAlignment,
-                onUpdatePadding = onUpdatePadding
+                onUpdatePadding = onUpdatePadding,
+                onFitWidth = onFitWidth,
+                onFitHeight = onFitHeight
             )
             LayerList(
                 components = components,
