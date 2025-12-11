@@ -31,8 +31,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.Chip
-import androidx.compose.material3.ChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,6 +40,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -55,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.weight
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -926,17 +927,19 @@ fun DeviceSizeSelector(
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             availableDevices.forEach { device ->
-                Chip(
+                SuggestionChip(
                     onClick = { onDeviceChange(device) },
-                    colors = ChipDefaults.chipColors(
-                        containerColor = if (device == selectedDevice) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface
-                    )
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(device.name, fontWeight = FontWeight.Medium)
-                        Text(device.logicalSize, style = MaterialTheme.typography.labelSmall)
+                    colors = SuggestionChipDefaults.suggestionChipColors(
+                        containerColor = if (device == selectedDevice) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface,
+                        labelColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    label = {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(device.name, fontWeight = FontWeight.Medium)
+                            Text(device.logicalSize, style = MaterialTheme.typography.labelSmall)
+                        }
                     }
-                }
+                )
             }
         }
         Text(
@@ -1042,9 +1045,10 @@ fun LayerPreviewStack(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 components.take(3).forEach { component ->
-                    Chip(onClick = { onSelectComponent(component.id) }) {
-                        Text(text = component.name)
-                    }
+                    SuggestionChip(
+                        onClick = { onSelectComponent(component.id) },
+                        label = { Text(text = component.name) }
+                    )
                 }
                 if (components.size > 3) {
                     Text(
