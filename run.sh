@@ -12,6 +12,29 @@ cd "$PROJECT_DIR"
 log "脚本所在目录: $PROJECT_DIR"
 log "系统信息: $(uname -a)"
 
+lock_arch() {
+  export REPO_OS_OVERRIDE=linux
+  export REPO_ARCH_OVERRIDE=arm64
+  log "已锁定下载架构: $REPO_OS_OVERRIDE / $REPO_ARCH_OVERRIDE"
+}
+
+setup_android_paths() {
+  export ANDROID_HOME="${ANDROID_HOME:-/data/data/com.termux/files/home/android-sdk}"
+  export ANDROID_SDK_ROOT="$ANDROID_HOME"
+  if [[ -d "$ANDROID_HOME" ]]; then
+    log "ANDROID_HOME = $ANDROID_HOME"
+  else
+    warn "未找到 ANDROID_HOME=$ANDROID_HOME，请先在手机端安装/同步 Android SDK"
+  fi
+}
+
+setup_gradle_opts() {
+  unset JAVA_TOOL_OPTIONS
+  unset _JAVA_OPTIONS
+  export GRADLE_OPTS="${GRADLE_OPTS:--Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8}"
+  log "GRADLE_OPTS = $GRADLE_OPTS"
+}
+
 if [[ -z "${GRADLE_USER_HOME-}" ]]; then
   export GRADLE_USER_HOME="$PROJECT_DIR/.gradle-mobile"
   mkdir -p "$GRADLE_USER_HOME"
@@ -21,6 +44,9 @@ else
 fi
 
 detect_env() {
+  lock_arch
+  setup_android_paths
+  setup_gradle_opts
   if [[ -n "${TERMUX_VERSION-}" ]]; then
     log "Termux 版本: $TERMUX_VERSION"
   else
@@ -36,34 +62,20 @@ detect_env() {
     warn "未找到 java，可在 Termux 安装 openjdk-17: pkg install openjdk-17"
   fi
 
-  export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
-  if [[ -d "$ANDROID_HOME" ]]; then
-    log "ANDROID_HOME = $ANDROID_HOME"
-  else
-    warn "未找到 ANDROID_HOME=$ANDROID_HOME，请先安装/配置 Android SDK"
-  fi
 }
 
 ensure_gradle() {
-  local gradle_cmd="./gradlew"
-  if [[ -x "$gradle_cmd" ]]; then
-    GRADLE_CMD="$gradle_cmd"
-    log "使用项目 gradlew"
-  elif [[ -f "$gradle_cmd" ]]; then
-    if chmod +x "$gradle_cmd" 2>/dev/null; then
-      GRADLE_CMD="$gradle_cmd"
-      log "已为 gradlew 赋权"
+  if [[ -f "gradlew" ]]; then
+    if chmod +x gradlew 2>/dev/null; then
+      GRADLE_CMD="./gradlew"
+      log "使用项目 gradlew"
     else
       GRADLE_CMD="bash gradlew"
-      warn "共享存储不可 chmod，改用 bash gradlew 兼容调用"
+      warn "共享存储不可 chmod，强制使用 bash gradlew（wrapper 不可执行但仍可运行）"
     fi
   else
-    GRADLE_CMD="$(command -v gradle || true)"
-    if [[ -z "$GRADLE_CMD" ]]; then
-      warn "未找到 gradle/gradlew，请安装 gradle 或拉取 wrapper"
-      exit 1
-    fi
-    log "使用系统 gradle: $GRADLE_CMD"
+    warn "项目缺少 Gradle Wrapper，请在可联网环境执行 ./gradlew wrapper 或同步 wrapper 后重试"
+    exit 1
   fi
 }
 
@@ -73,6 +85,13 @@ run_gradle() {
   local result=$?
   set -e
   return $result
+}
+
+clean_caches() {
+  local gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+  log "清理 Gradle/Android 缓存以避免序列化与架构冲突"
+  rm -rf "$gradle_home/caches" "$gradle_home/daemon" "$gradle_home/native" || true
+  rm -rf "$HOME/.android" "$HOME/.cache/gradle" || true
 }
 
 prepare_aapt2() {
@@ -100,6 +119,12 @@ prepare_aapt2() {
   }
 
   purge_incompatible_aapt2
+
+  # 0) 显式指定优先路径，方便用户预放 ARM64 aapt2
+  if [[ -z "$candidate" && -f "/data/data/com.termux/files/home/android-tools-arm64/aapt2" ]]; then
+    candidate="/data/data/com.termux/files/home/android-tools-arm64/aapt2"
+    log "检测到预置 aapt2: $candidate"
+  fi
 
   # 1) 优先使用 Termux 包中的 aapt2（如安装了 termux/apt 包 android-tools 或 aapt2）
   if [[ -z "$candidate" && -n "${PREFIX-}" ]]; then
@@ -149,8 +174,10 @@ prepare_aapt2() {
 
   local file_info
   file_info=$(file "$candidate" 2>/dev/null || true)
-  if [[ -n "$file_info" && "$file_info" != *"$arch"* ]]; then
-    warn "aapt2 架构与当前 $arch 可能不匹配: $file_info"
+  if [[ -n "$file_info" && "$file_info" != *"$arch"* && "$file_info" != *"ARM"* && "$file_info" != *"aarch64"* ]]; then
+    warn "aapt2 架构与当前 $arch 不匹配: $file_info"
+    warn "请确认使用 ARM64 版本 aapt2（file 输出需包含 aarch64/ARM），并重新运行脚本"
+    exit 1
   fi
 
   if [[ "$cache_purged" == "true" ]]; then
@@ -222,6 +249,7 @@ check_environment() {
 
 full_build() {
   ensure_gradle
+  clean_caches
   prepare_aapt2
   log "执行完整构建: clean assembleDebug"
   run_gradle clean assembleDebug
@@ -237,6 +265,7 @@ full_build() {
 
 incremental_build() {
   ensure_gradle
+  clean_caches
   prepare_aapt2
   log "执行增量构建: assembleDebug"
   run_gradle assembleDebug
