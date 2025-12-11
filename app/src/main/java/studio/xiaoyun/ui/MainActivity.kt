@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.align
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -951,15 +950,19 @@ fun CanvasRegionBlock(
                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                                 Box(
-                                    modifier = Modifier
-                                        .align(alignment)
-                                        .padding(horizontal = component.paddingDp.dp)
-                                        .size(width = scaledWidth, height = scaledHeight)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(
-                                            MaterialTheme.colorScheme.primary.copy(alpha = component.opacity * 0.6f)
-                                        )
-                                )
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = alignment
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(horizontal = component.paddingDp.dp)
+                                            .size(width = scaledWidth, height = scaledHeight)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(
+                                                MaterialTheme.colorScheme.primary.copy(alpha = component.opacity * 0.6f)
+                                            )
+                                    )
+                                }
                             }
                         }
                     }
