@@ -349,6 +349,41 @@ fun StudioHomeScreen() {
         }
     }
 
+    fun moveComponent(id: Int, direction: Int) {
+        val index = canvasComponents.indexOfFirst { it.id == id }
+        val targetIndex = index + direction
+        if (index in canvasComponents.indices && targetIndex in canvasComponents.indices) {
+            val item = canvasComponents.removeAt(index)
+            canvasComponents.add(targetIndex, item)
+        }
+    }
+
+    fun duplicateComponent(id: Int) {
+        val index = canvasComponents.indexOfFirst { it.id == id }
+        val original = canvasComponents.getOrNull(index) ?: return
+        val copy = original.copy(id = nextId, name = "${original.name} 副本")
+        if (index >= 0) {
+            canvasComponents.add(index + 1, copy)
+        } else {
+            canvasComponents.add(copy)
+        }
+        focusedComponentId = copy.id
+        paletteSelection = copy.name
+        nextId += 1
+    }
+
+    fun removeComponent(id: Int) {
+        val index = canvasComponents.indexOfFirst { it.id == id }
+        if (index >= 0) {
+            canvasComponents.removeAt(index)
+            if (focusedComponentId == id) {
+                val fallback = canvasComponents.lastOrNull()
+                focusedComponentId = fallback?.id
+                paletteSelection = fallback?.name ?: paletteSelection
+            }
+        }
+    }
+
     val focusedComponentName =
         canvasComponents.firstOrNull { it.id == focusedComponentId }?.name ?: paletteSelection
 
@@ -432,6 +467,10 @@ fun StudioHomeScreen() {
                     },
                     onToggleVisible = { toggleVisibility(it) },
                     onToggleLock = { toggleLock(it) },
+                    onMoveUp = { moveComponent(it, -1) },
+                    onMoveDown = { moveComponent(it, 1) },
+                    onDuplicate = { duplicateComponent(it) },
+                    onDelete = { removeComponent(it) },
                     onUpdateRegion = { id, region -> updateRegion(id, region) },
                     onUpdateSize = { id, width, height -> updateSize(id, width, height) },
                     onUpdateOpacity = { id, alpha -> updateOpacity(id, alpha) },
@@ -852,6 +891,10 @@ fun PropertyPanel(
     onSelectComponent: (Int) -> Unit,
     onToggleVisible: (Int) -> Unit,
     onToggleLock: (Int) -> Unit,
+    onMoveUp: (Int) -> Unit,
+    onMoveDown: (Int) -> Unit,
+    onDuplicate: (Int) -> Unit,
+    onDelete: (Int) -> Unit,
     onUpdateRegion: (Int, CanvasRegion) -> Unit,
     onUpdateSize: (Int, Int?, Int?) -> Unit,
     onUpdateOpacity: (Int, Float) -> Unit,
@@ -887,7 +930,11 @@ fun PropertyPanel(
                 components = components,
                 onSelectComponent = onSelectComponent,
                 onToggleVisible = onToggleVisible,
-                onToggleLock = onToggleLock
+                onToggleLock = onToggleLock,
+                onMoveUp = onMoveUp,
+                onMoveDown = onMoveDown,
+                onDuplicate = onDuplicate,
+                onDelete = onDelete
             )
             PropertyGroup(title = "交互", items = listOf("点击：预览模式", "双指：缩放", "长按：显示菜单"))
             PropertyGroup(title = "适配", items = listOf("独立于真机参数", "兼容所有尺寸", "预览即真实效果"))
@@ -900,7 +947,11 @@ fun LayerList(
     components: List<CanvasComponent>,
     onSelectComponent: (Int) -> Unit,
     onToggleVisible: (Int) -> Unit,
-    onToggleLock: (Int) -> Unit
+    onToggleLock: (Int) -> Unit,
+    onMoveUp: (Int) -> Unit,
+    onMoveDown: (Int) -> Unit,
+    onDuplicate: (Int) -> Unit,
+    onDelete: (Int) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -955,6 +1006,20 @@ fun LayerList(
                                 }
                                 OutlinedButton(onClick = { onToggleLock(component.id) }) {
                                     Text(if (component.locked) "解锁" else "锁定")
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = { onMoveUp(component.id) }) {
+                                    Text("上移")
+                                }
+                                OutlinedButton(onClick = { onMoveDown(component.id) }) {
+                                    Text("下移")
+                                }
+                                OutlinedButton(onClick = { onDuplicate(component.id) }) {
+                                    Text("复制")
+                                }
+                                OutlinedButton(onClick = { onDelete(component.id) }) {
+                                    Text("删除")
                                 }
                             }
                         }
